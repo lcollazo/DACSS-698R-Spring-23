@@ -1,0 +1,597 @@
+---
+title: "Data Report for 2023 HIM Graduate Survey"
+author: "Prepared by Laura Collazo"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(qualtRics)
+library(tidyverse)
+library(tidytext)
+library(knitr)
+library(kableExtra)
+
+```
+
+```{r read in data, message=FALSE, echo=FALSE}
+
+raw_data <- read_survey("Health+Information+Management+Graduate+Survey+-+2023_March+31,+2023_08.12.csv")
+
+# This filter removes responses from testing and unfinished surveys that were force closed
+
+raw_data <- filter(raw_data, Finished != "FALSE" & DistributionChannel != "preview")
+
+```
+
+```{r write out data, message=FALSE, echo=FALSE}
+
+# This writes out the raw data to provide to the AD
+
+data <- raw_data %>% 
+  select(-c(First_Name)) %>% 
+  select_if(~!all(is.na(.)))
+
+write.csv(data, "2023_HIM_gradaute_survey_data_2023-3-31.csv")
+
+```
+
+```{css, echo=FALSE}
+
+/*This has been added to hide the unknown level warning before the PLO plots */
+
+pre {
+display: none;
+}
+
+```
+
+## Response rate
+
+```{r response rate, echo=FALSE}
+
+#The total number of survey recipients needs to manually be set.
+
+total <- 40
+
+n <- nrow(raw_data)
+
+no_response <- total - n
+
+surveys_finished <- (n / total) * 100
+
+unfinished_surveys <- (no_response / total) * 100
+
+response_type <- c("Surveys Finished", "Unfinished Surveys", "Total")
+number <- c(n, no_response, total)
+percent <- c(surveys_finished, unfinished_surveys, sum(total/total*100))
+
+response_rate <- data.frame(response_type, number, percent)
+
+kable(response_rate, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+## Margin of error for response rate with a 95% confidence level
+
+#### The margin of error is plus or minus:
+
+```{r margin of error, echo=FALSE}
+
+#confidence level
+
+confidence_level <- 0.95
+
+# margin of error for finite populations
+
+z <- 1.96
+p <- n / total 
+s<- sqrt(p*(1-p))     
+N <- total
+nadj <- ((N-1)*n)/(N-n) 
+margin_of_error <- (z*s/sqrt(nadj))*100
+
+kable(margin_of_error, col.names = c("margin_of_error"), digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+## Summary statistics
+
+```{r summary statistic function, echo=FALSE}
+
+# create function for stats
+
+summary_stats <- function (mydata, myxvar) {
+  select({{mydata}}, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)*100)  %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+
+# create function for table
+
+table <- function(mydata) {kable({{mydata}}, digits = 2, row.names = F) %>% 
+  kable_styling("striped")
+}
+
+#create function for bar plot
+
+bar_plot <- function(myxvar, mytitle){
+  suppressWarnings(raw_data %>% 
+  select({{myxvar}}) %>% 
+    drop_na %>%
+  group_by({{myxvar}}) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes({{myxvar}}, percent, 
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent",
+       x = NULL) +
+ geom_text(labels = scales::percent) + 
+ scale_y_continuous(labels = scales::percent))
+}
+
+```
+
+### Work status
+
+```{r work status, echo=FALSE}
+
+work_status <- summary_stats(raw_data, Q1)
+
+table(work_status)
+
+bar_plot(Q1, "Work Status")
+
+```
+
+### Is your employment in a health-related field?
+
+```{r employment status, echo=FALSE}
+
+employment_status <- summary_stats(raw_data, Q2)
+
+table(employment_status)
+
+bar_plot(Q2, "Is your employment in a health-related field?")
+
+```
+
+### Job title
+
+```{r job title, echo=FALSE}
+
+job_title_data <- raw_data %>% 
+  select(Q3_1) %>% 
+  drop_na %>% 
+  mutate(Q3_1 = case_when(
+    str_detect(Q3_1, "Coding | Coder | coder") ~ "Coder",
+    str_detect(Q3_1, "Assistant") ~ "Assistant",
+    str_detect(Q3_1, "Supervisor") ~ "Supervisor",
+    str_detect(Q3_1, "Manager") ~ "Manager",
+    str_detect(Q3_1, "Director") ~ "Director",
+    str_detect(Q3_1, "Coordinator") ~ "Coordinator",
+    .default = "Other"))
+
+job_title <- summary_stats(job_title_data, Q3_1)
+
+table(job_title)
+
+suppressWarnings(job_title_data %>% 
+  select(Q3_1) %>% 
+    drop_na %>%
+  group_by(Q3_1) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes(Q3_1, percent, 
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = "Categorized Job Titles",
+       y = "Percent",
+       x = NULL) +
+ geom_text(labels = scales::percent) + 
+ scale_y_continuous(labels = scales::percent))
+
+```
+
+### Reported employer
+
+```{r reported employer, echo=FALSE}
+
+reported_employer_data <- raw_data %>% 
+  mutate(Q3_2 = case_when(
+    Q3_2 == "Hackensack meridian" ~ "Hackensack Meridian Health",
+    Q3_2 == "New York  Presbyterian hospital" ~ "New York Presbyterian",
+    Q3_2 == "NORTHWELL HEALTH" ~ "Northwell Health",
+    Q3_2 == "Northwell" ~ "Northwell Health",
+    Q3_2 == "NYP BMH" ~ "New York Presbyterian",
+    .default = as.character(Q3_2)))
+
+reported_employeer <- summary_stats(reported_employer_data, Q3_2)
+
+table(reported_employeer)
+
+```
+### Have you taken the RHIA exam?
+
+```{r taken RHIA, echo=FALSE}
+
+taken_RHIA <- summary_stats(raw_data, Q4) 
+
+table(taken_RHIA)
+
+suppressWarnings(raw_data %>% 
+  select(Q4) %>% 
+    drop_na %>%
+  group_by(Q4) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes(x = "", y = percent, fill = Q4)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(scales::percent(percent))), 
+            position = position_stack(vjust=0.5)) +
+  labs(x = NULL, y = NULL, fill = NULL, title = "Have you taken the RHIA exam?") +
+  theme_light() +
+  theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank()) +
+  scale_fill_manual(values=c("lightgray", "darkgray")))
+ 
+```
+
+### Do you plan on sitting for the RHIA exam?
+
+```{r plan to take RHIA, echo=FALSE}
+
+plan_take_RHIA <- summary_stats(raw_data, Q5) 
+
+table(plan_take_RHIA)
+
+suppressWarnings(raw_data %>% 
+  select(Q5) %>% 
+    drop_na %>%
+  group_by(Q5) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes(x = "", y = percent, fill = Q5)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(scales::percent(percent))), 
+            position = position_stack(vjust=0.5)) +
+  labs(x = NULL, y = NULL, fill = NULL, title = "Do you plan on sitting for the RHIA exam?") +
+  theme_light() +
+  theme(axis.line = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank()) +
+  scale_fill_manual(values=c("lightgray", "darkgray")))
+
+```
+
+### When do you plan on taking the RHIA exam?
+
+```{r when plan to take RHIA, echo=FALSE}
+
+when_take_RHIA_data <- raw_data %>% 
+  mutate(Q7 = case_when(
+    Q7 == "May" ~ "Within 3 months",
+    Q7 == "May 7" ~ "Within 3 months",
+    Q7 == "June 2022" ~ "Within 3 months",
+    Q7 == "Second try in coming month" ~ "Within 3 months",
+    Q7 == "As soon a my schedule permits, in the next 6 months" ~ "Within 6 months",
+    Q7 == "08/30/2022" ~ "Within 6 months",
+    Q7 == "Summer 2022" ~ "Within 6 months",
+    Q7 == "Jan 2023" ~ "Within 6 months",
+    Q7 == "In the next 6 months" ~ "Within 6 months",
+    Q7 == "Summer or Fall" ~ "This year",
+    Q7 == "Next year" ~ "Next year",
+    Q7 == "next year" ~ "Next year",
+    Q7 == "sometime next year" ~ "Next year",
+    Q7 == "As soon as I find a job in this field" ~ "Unsure",
+    Q7 == "Not sure" ~ "Unsure",
+    Q7 == "I don't know." ~ "Unsure",
+    Q7 == "2023" ~ "This year",
+    Q7 == "2024" ~ "Next year",
+    Q7 == "Not sure as yet" ~ "Unsure",
+    Q7 == "Not sure working on it. I have had health issues since I graduated" ~ "Unsure",
+    Q7 == "june 2023" ~ "Within 3 months",
+    .default = as.character(Q7)))
+
+when_take_RHIA <- summary_stats(when_take_RHIA_data, Q7)  %>%
+  arrange(fct_relevel(Q7, "Within 3 months", "This year", "Next year", "Unsure"))
+
+table(when_take_RHIA)
+
+suppressWarnings(when_take_RHIA_data %>% 
+  select(Q7) %>% 
+    drop_na %>%
+  group_by(Q7) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes(x = fct_relevel(Q7, "Unsure", "Next year", "This year", "Within 3 months"), percent, 
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = "When do you plan on taking the RHIA exam?",
+       y = "Percent",
+       x = NULL) +
+ geom_text(labels = scales::percent) + 
+ scale_y_continuous(labels = scales::percent))
+
+```
+
+## Program Learning Outcomes
+
+```{r program learning outcomes, echo=FALSE}
+
+#create function
+
+plo_summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)*100) %>%
+  arrange(fct_relevel({{myxvar}}, "Strongly disagree", "Generally disagree", "Neither agree nor disagree", "Generally agree", "Strongly agree")) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+
+# create plo bar plot funciton
+
+plo_bar_plot <- function(myxvar, mytitle){
+  suppressWarnings(raw_data %>% 
+  select({{myxvar}}) %>% 
+    drop_na %>%
+  group_by({{myxvar}}) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes(x = fct_relevel({{myxvar}}, "Strongly agree", "Generally agree", "Neither agree nor disagree", "Generally disagree", "Strongly disagree"), 
+             percent,
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent",
+       x = NULL) +
+ geom_text(labels = scales::percent) + 
+ scale_y_continuous(labels = scales::percent))
+}
+
+```
+### Helped me to acquire the knowledge necessary for my job.
+```{r Q8_1, echo=FALSE}
+
+plo_1 <- suppressWarnings(plo_summary_stats(Q8_1))
+
+table(plo_1)
+
+plo_bar_plot(Q8_1, "Helped me to acquire the knowledge necessary for my job.")
+                 
+```
+
+### Prepared me to use sound judgment while functioning in my job.
+
+```{r Q8_2, echo=FALSE, style.display=none}
+
+plo_2 <- suppressWarnings(plo_summary_stats(Q8_2))
+
+table(plo_2)
+
+plo_bar_plot(Q8_2, "Prepared me to use sound judgment while functioning in my job.")
+
+
+```
+
+### Enabled me to think critically, solve problems, and develop appropriate action steps.
+
+```{r Q8_3, echo=FALSE}
+
+plo_3 <- suppressWarnings(plo_summary_stats(Q8_3))
+
+table(plo_3)
+
+plo_bar_plot(Q8_3, "Enabled me to think critically, solve problems, and develop appropriate action steps.")
+
+```
+
+### Prepared me to communicate effectively within my work setting.
+
+```{r Q8_4, echo=FALSE}
+
+plo_4 <-suppressWarnings(plo_summary_stats(Q8_4))
+
+table(plo_4)
+
+plo_bar_plot(Q8_4, "Prepared me to communicate effectively within my work setting.")
+
+```
+
+### Prepared me to conduct myself in an ethical and professional manner.
+
+```{r Q8_5, echo=FALSE}
+
+plo_5 <- suppressWarnings(plo_summary_stats(Q8_5))
+
+table(plo_5)
+
+plo_bar_plot(Q8_5, "Prepared me to conduct myself in an ethical and professional manner.")
+
+```
+
+### My overall academic experience met my expectations.
+
+```{r Q8_6, echo=FALSE}
+
+plo_6 <- suppressWarnings(plo_summary_stats(Q8_6))
+
+table(plo_6)
+
+plo_bar_plot(Q8_6, "Prepared me to conduct myself in an ethical and professional manner.")
+
+```
+
+## Qualitative Results
+
+#### The following open-ended questions were included in the HIM Graduate Survey:
+* What two suggestions would further strengthen the program?
+* What knowledge or skills were expected of you upon employment that were not included in the program?
+* Please provide comments and suggestions that would help to better prepare future graduates.
+
+#### Qualitative analysis of the responses of these questions, revealed the following themes:
+ 
+```{r text analysis, echo=FALSE, message=FALSE}
+
+text <- raw_data %>% 
+  select(c(Q9, Q10, Q11)) 
+
+# create character dataframe
+
+text <- as.character(text)
+
+text_df <- tibble(text = text)
+
+# prepare dataframe for analysis
+
+tidy_text <- text_df %>% 
+  unnest_tokens(word, text) # can use this to keep words together: token = "ngrams", n = 3
+
+#remove stop_words
+
+tidy_text <- tidy_text %>% 
+  anti_join(stop_words) %>% 
+  filter(word != "na")
+
+tidy_text %>% 
+  count(word, sort = TRUE)
+
+# order by most common results
+
+tidy_text %>% 
+  count(word, sort = TRUE) %>% 
+  head(10) %>% 
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = "Top 10 words used most frequently in open-ended responses",
+       y = "Count",
+       x = NULL) 
+
+```
+
+## Appendix
+
+#### Open-ended responses: Direct quotes as written by respondents.
+
+
+```{r, echo=FALSE, eval=FALSE}
+
+### Please check the category that reflects your status at the time of this survey - Other (please specify) - there were no responses to this question so it has been hidden
+
+status_other <- raw_data %>% 
+  select(Q1_5_TEXT) %>% 
+  drop_na()
+
+kable(status_other, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+### Background information: Job Title
+
+```{r, echo=FALSE}
+
+job_title <- raw_data %>% 
+  select(Q3_1) %>% 
+  drop_na()
+
+kable(job_title, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+### Please tell us why you do not plan on taking the RHIA exam
+
+```{r, echo=FALSE}
+
+no_RHIA <- raw_data %>% 
+  select(Q6) %>% 
+  drop_na()
+
+kable(no_RHIA, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+### When do you plan on taking the RHIA exam?
+
+```{r, echo=FALSE}
+
+when_RHIA <- raw_data %>% 
+  select(Q7) %>% 
+  drop_na()
+
+kable(when_RHIA, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+### What two suggestions would further strengthen the program?
+
+```{r, echo=FALSE}
+
+strengthen_program <- raw_data %>% 
+  select(Q9) %>% 
+  drop_na()
+
+kable(strengthen_program, digits = 2) %>% 
+  kable_styling("striped")
+  
+```
+
+### What knowledge or skills were expected of you upon employment that were not included in the program?
+
+```{r, echo=FALSE}
+
+expected_skills <- raw_data %>% 
+  select(Q10) %>% 
+  drop_na()
+
+kable(expected_skills, digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+### Please provide comments and suggestions that would help to better prepare future graduates.
+
+```{r, echo=FALSE}
+
+comments_suggestions <- raw_data %>% 
+  select(Q11) %>% 
+  drop_na()
+
+kable(comments_suggestions, digits = 2) %>% 
+  kable_styling("striped")
+
+```

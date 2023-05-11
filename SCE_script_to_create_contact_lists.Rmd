@@ -1,0 +1,150 @@
+---
+title: "Script to Prepare Course Eval Contact List"
+author: "Laura Collazo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+library(splitstackshape)
+
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Tidy data
+
+```{r read data}
+
+#read in data
+
+raw_data <- read_excel("Sp23_All_AcadOrg_QUALTRICS_CrsStuInst_04.10.2023.xlsx", skip = 1) 
+
+# tidy data
+
+tidy_data <- raw_data %>% 
+  
+# filter out what fields aren't needed
+  
+  select(-c("Student Campus Email", "Mode", "Diploma Descr", "Acad Plan", "Term", "Class Nbr", "Session")) %>% 
+  
+# rename columns to match name of fields in Qualtrics
+  
+  rename(FirstName = "Student First Name",
+         LastName = "Student Last Name",
+         Email = "Student Preferred Email",
+         StudentEMPLID = "Student EMPLID",
+         InstructorEmail = "Instructor Email"
+         ) %>% 
+
+# remove Acad Org AMNH-SPS 
+  
+  filter(`Acad Org` != "AMNH-SPS") %>% 
+  
+# remove column Acad Org
+  
+  select(-c("Acad Org")) %>% 
+
+# concat course details
+  
+  unite("course_details", Subject:Section, sep = ".", remove = TRUE) %>% 
+  
+  unite("instructor", `Instructor Last Name`:`Instructor First Name`, sep = "; ", remove = TRUE) %>% 
+  
+  unite("Course", course_details:instructor, sep = " | ", remove = TRUE) %>% 
+  
+# temporarily mutate , to ;
+  
+  mutate(across("Course", str_replace_all, ",", ";")) %>% 
+  
+# remove "PERM" Courses
+  
+  filter(!str_detect(Course, "PERM")) %>% 
+  
+# remove "ECE" courses
+
+  filter(!str_detect(Course, "ECE")) %>% 
+
+# remove APTH 659 - independent study
+  
+  filter(!str_detect(Course, "APTH.659")) %>% 
+
+# remove RAC 698 - research compliance practicum
+  
+  filter(!str_detect(Course, "RAC.698")) %>% 
+  
+# remove duplicates
+  
+  distinct()
+  
+# pivot data wider on student
+
+contact_list <- tidy_data %>% 
+  select(c(FirstName, LastName, Email, Course, InstructorEmail, StudentEMPLID)) %>% 
+  group_by(FirstName, LastName, Email, StudentEMPLID) %>% 
+  
+# combine courses and instructor emails
+  
+  summarise(Course = toString(Course),
+            InstructorEmail = toString(InstructorEmail)) %>% 
+  
+# split courses and instructor emails 
+  
+  cSplit("Course") %>% 
+  cSplit("InstructorEmail") %>% 
+
+# mutate ; back to ,
+  
+# In the future the number of courses could vary and the script may need to be adjusted to reflect this. Consider automating in the future to avoid manual adjustments.
+  
+  mutate(across(Course_1:Course_6, str_replace_all, ";", ",")) %>% 
+  
+#rename columns
+  
+  rename(`Course 1` = "Course_1",
+         `Course 2` = "Course_2",
+         `Course 3` = "Course_3",
+         `Course 4` = "Course_4",
+         `Course 5` = "Course_5",
+         `Course 6` = "Course_6",
+         InstructorEmail1 = "InstructorEmail_1",
+         InstructorEmail2 = "InstructorEmail_2",
+         InstructorEmail3 = "InstructorEmail_3",
+         InstructorEmail4 = "InstructorEmail_4",
+         InstructorEmail5 = "InstructorEmail_5",
+         InstructorEmail6 = "InstructorEmail_6") %>% 
+  
+# add new columns and set to "No"
+  
+    mutate(`Eval 1 Complete` = "No",
+         `Eval 2 Complete` = "No",
+         `Eval 3 Complete` = "No",
+         `Eval 4 Complete` = "No",
+         `Eval 5 Complete` = "No",
+         `Eval 6 Complete` = "No",
+         Seen = "No") 
+
+```
+## Write out data for Marketing
+
+```{r}
+
+marketing_contact_list <- contact_list %>% 
+  select(c(FirstName, LastName, Email, StudentEMPLID))
+
+write_csv(marketing_contact_list, "spring_2023_SCE_marketing_contact_list_2023-4-13.csv")
+
+```
+
+## Write out data for Qualtrics
+
+```{r}
+
+# na = "" ensures a blank field in the csv file rather than "NA"
+
+write_csv(contact_list, "sp_2023_sce_contact_list_2023-4-14.csv", na = "")
+
+```
+

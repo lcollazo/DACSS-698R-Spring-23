@@ -1,0 +1,841 @@
+---
+title: "2023 NURS MS Student Survey Report"
+author: "Prepared by Laura Collazo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(qualtRics)
+library(tidyverse)
+library(kableExtra)
+
+# to avoid messages and warnings
+
+options(dplyr.summarise.inform = FALSE, warn = -1)
+
+```
+
+```{r read in data, message=FALSE, echo=FALSE}
+
+raw_data <- read_survey("MS+in+Nursing+Student+Survey+-+2023_April+5,+2023_03.03.csv")
+
+raw_data <- raw_data %>% 
+  mutate(Q4 = as.character(Q4)) %>% 
+  mutate(Q40 = case_when(Q40 < 26 ~ "25 and under",
+                   Q40 > 25 & Q40 < 31 ~ "26 thru 30",
+                   Q40 > 30 & Q40 < 36 ~ "31 thru 35",
+                   Q40 > 35 & Q40 < 41 ~ "36 thru 40",
+                   Q40 > 40 & Q40 < 46 ~ "41 thru 45",
+                   Q40 > 45 & Q40 < 51 ~ "46 thru 50",
+                   Q40 > 50 & Q40 < 56 ~ "51 thru 55",
+                   Q40 > 55 ~ "56 and over"
+                    )) %>%
+  mutate(Q74 = recode(Q74, 
+      `Other (specify):` = "Other")) %>% 
+  mutate(Q74 = recode(Q74, 
+      `Outpatient Speciality Clinics ( Example: ENT, GI )` = "Outpatient Speciality Clinics")) %>% 
+  mutate(Q30 = recode(Q30, 
+      `Other (specify in text box)` = "Other")) %>% 
+  mutate(Q32 = recode(Q32,
+      `(0) children` = "0",
+      `(1) child` = "1",
+      `(2) children` = "2",
+      `(3 or more) children` = "3 or more")) %>% 
+  
+# this filter removes responses from testing and responses from open surveys that were force closed
+  
+  filter(Finished != "FALSE" & DistributionChannel != "preview")
+
+```
+
+This report provides summary statistics and visualizations of student responses to the 2023 NURS MS student survey. The survey was administered through Qualtrics between March 7 - April 4, 2023.
+
+*Note: in some instances the total percent will be slightly above or below 100 as a result of rounding.*
+
+## Response rate
+
+```{r response rate, echo=FALSE}
+
+#The total number of survey recipients needs to manually be set.
+
+total <- 156
+
+n <- nrow(raw_data)
+
+no_response <- total-n
+
+surveys_finished <- (n/total) * 100
+
+unfinished_surveys <- (no_response/total) * 100
+
+percent_total <- surveys_finished + unfinished_surveys
+
+response_type <- c("Surveys Finished", "Unfinished Surveys", "Total")
+count <- c(n, no_response, total)
+percent <- c(surveys_finished, unfinished_surveys, percent_total)
+
+response_rate <- data.frame(response_type, count, percent)
+
+kable(response_rate, digits = 2) %>% 
+  kable_styling()
+
+```
+
+## Margin of error for response rate with a 95% confidence level
+
+#### The margin of error is plus or minus:
+
+```{r margin of error, echo=FALSE}
+
+#confidence level
+
+confidence_level <- 0.95
+
+# margin of error for finite populations
+
+z <- 1.96
+p <- n / total 
+s<- sqrt(p*(1-p))     
+N <- total
+nadj <- ((N-1)*n)/(N-n) 
+margin_of_error <- (z*s/sqrt(nadj))*100
+
+kable(margin_of_error, col.names = c("margin_of_error"), digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+*Note: The margin of error was calculated with a correction factor for finite populations.*
+
+## Summary Statistics
+
+```{r functions, echo=FALSE}
+
+# create function for summary statistics
+
+summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+
+# create function for group summary statistics
+
+group_summary_stats <- function (myxvar, myvaluevar) {
+  select(raw_data, {{myxvar}}, `1st_Acad_Plan_Descr`) %>%
+    drop_na %>%
+  filter(str_detect(`1st_Acad_Plan_Descr`, {{myvaluevar}})) %>% 
+  group_by(`1st_Acad_Plan_Descr`, {{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>%  
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+  
+# create function to transpose data
+
+transpose_df <- function(mydata) {{{mydata}} %>%     
+    t() %>%      
+    as.data.frame() %>%   
+    tibble::rownames_to_column(var = "rowname") %>%
+    janitor::row_to_names(row_number = 1)
+  }
+
+# create function for table
+
+table <- function(mydata) {kable({{mydata}}, row.names = F) %>% 
+  kable_styling()
+}
+
+# create uni bar plot function
+
+bar_plot <- function(myxvar, mytitle){
+  suppressWarnings(raw_data %>% 
+  select({{myxvar}}) %>% 
+    drop_na %>%
+  group_by({{myxvar}}) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes({{myxvar}}, percent, 
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent",
+       x = NULL) +
+ geom_text(labels = scales::percent) + 
+ scale_y_continuous(labels = scales::percent))
+}
+
+
+```
+
+### First NURS Course
+
+#### Term Enrolled in Master's in Nursing Program at CUNY SPS
+
+```{r term, echo=FALSE}
+  
+term <- summary_stats(Q3) %>%
+  arrange(fct_relevel(Q3, "Fall", "Winter", "Spring", "Summer"))
+
+t_term <- transpose_df(term)
+
+table(t_term)
+
+```
+
+#### Year Enrolled in Master's in Nursing Program at CUNY SPS
+
+```{r year, echo=FALSE}
+  
+year <- summary_stats(Q4)
+
+t_year <- transpose_df(year)
+
+table(t_year)
+
+```
+## PLO
+
+```{r PLO functions, echo=FALSE}
+
+# create function
+
+plo_summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>%
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))  %>%
+  arrange(fct_relevel({{myxvar}}, "Not at All", "Very Little", "Uncertain", "Well", "Very Well"))
+}
+
+# create group function
+
+plo_group_summary_stats <- function (myxvar, myvaluevar) {
+select(raw_data, {{myxvar}}, `1st_Acad_Plan_Descr`) %>%
+    drop_na %>%
+  filter(str_detect(`1st_Acad_Plan_Descr`, {{myvaluevar}})) %>% 
+  group_by(`1st_Acad_Plan_Descr`, {{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = Count/sum(Count)) %>% 
+  mutate(`% of Total` = as.numeric(`% of Total`)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total'))) %>% 
+  arrange(fct_relevel({{myxvar}}, "Not at All", "Very Little", "Uncertain", "Well", "Very Well"))
+}
+
+```
+
+### MSN PLO
+
+#### Please indicate how well you feel the Nursing program is preparing you with the ability to: Overall MS Nursing Students
+
+##### Demonstrate effective communication with diverse client populations, disciplines, and staff ensuring optimal health promotion.
+
+```{r plo 1, echo=FALSE}
+
+plo_1 <- plo_summary_stats(PLO_1)
+
+t_plo_1 <- transpose_df(plo_1)
+
+table(t_plo_1)
+
+```
+
+##### Apply leadership skills to guide and educate nursing staff to make sound judgments in the provision of safe, quality nursing care. 
+
+```{r plo 2, echo=FALSE}
+
+plo_2 <- plo_summary_stats(PLO_2)
+
+t_plo_2 <- transpose_df(plo_2)
+
+table(t_plo_2)
+
+```
+
+##### Assume a leadership role in collaborative teams to improve care outcomes and advocate for policy changes through knowledge creation, distribution, and application.
+
+```{r plo 3, echo=FALSE}
+
+plo_3 <- plo_summary_stats(PLO_3)
+
+t_plo_3 <- transpose_df(plo_3)
+
+table(t_plo_3)
+
+```
+
+##### Design health policies that address local and global population health issues. 
+
+```{r plo 4, echo=FALSE}
+
+plo_4 <- plo_summary_stats(PLO_4)
+
+t_plo_4 <- transpose_df(plo_4)
+
+table(t_plo_4)
+
+```
+
+#####  Analyze current and emerging technologies and informatics systems to support safe practice environments, and optimize quality care, cost-effectiveness, and health outcomes.
+
+```{r plo 5, echo=FALSE}
+
+plo_5 <- plo_summary_stats(PLO_5)
+
+t_plo_5 <- transpose_df(plo_5)
+
+table(t_plo_5)
+
+```
+
+##### Demonstrate effective management of patient care across disciplines to ensure best possible health care outcomes, including clinical prevention strategies.
+
+```{r plo 6, echo=FALSE}
+
+plo_6 <- plo_summary_stats(PLO_6)
+
+t_plo_6 <- transpose_df(plo_6)
+
+table(t_plo_6)
+
+```
+
+##### Conduct research, implement evidenced-based care, and quantify the impact on quality and safety.
+
+```{r plo 7, echo=FALSE}
+
+plo_7 <- plo_summary_stats(PLO_7)
+
+t_plo_7 <- transpose_df(plo_7)
+
+table(t_plo_7)
+
+```
+
+##### Demonstrate an understanding of how healthcare delivery systems are organized and financed and how this impacts patient outcomes; and identify the economic, legal, and political factors that influence health care.
+
+```{r plo 8, echo=FALSE}
+
+plo_8 <- plo_summary_stats(PLO_8)
+
+t_plo_8 <- transpose_df(plo_8)
+
+table(t_plo_8)
+
+```
+
+##### Integrate nursing and related sciences in the design, delivery, and evaluation of health care for diverse populations.
+
+```{r plo 9, echo=FALSE}
+
+plo_9 <- plo_summary_stats(PLO_9)
+
+t_plo_9 <- transpose_df(plo_9)
+
+table(t_plo_9)
+
+```
+
+### NURS 611
+
+#### Please note, the following question only applies to students who have taken the course NURS 611. How effective was Shadow Health at facilitating your learning?
+
+```{r nurs_611, echo=FALSE}
+  
+nurs_611 <- summary_stats(Q35) %>%
+  arrange(fct_relevel(Q35, "Not effective at all", "Slightly effective", "Moderately effective", "Very effective", "Extremely effective"))
+
+t_nurs_611 <- transpose_df(nurs_611)
+
+table(t_nurs_611)
+
+```
+
+### Program Satisfaction
+
+#### Does the Nursing Program Blackboard Organization site provide helpful information (e.g. Nursing notes for graduate students) relevant to your progress as a student? 
+
+```{r Q10_total, echo=FALSE}
+  
+Q10 <- summary_stats(Q10)
+
+t_Q10 <- transpose_df(Q10)
+
+table(t_Q10)
+
+```
+
+#### Overall, I feel that the Nursing faculty and staff provide sufficient support to help me complete my degree. 
+
+```{r Q12_total, echo=FALSE}
+  
+Q12 <- summary_stats(Q12) %>%
+  arrange(fct_relevel(Q12, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"))
+
+t_Q12 <- transpose_df(Q12)
+
+table(t_Q12)
+
+```
+
+#### Overall, how satisfied are you with the CUNY SPS MS in Nursing program?  
+
+```{r Q14_total, echo=FALSE}
+  
+Q14 <- summary_stats(Q14) %>%
+  arrange(fct_relevel(Q14, "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied"))
+
+t_Q14 <- transpose_df(Q14)
+
+table(t_Q14)
+
+```
+
+#### Overall, I feel the college provides sufficient support and resources for me to complete my degree.  
+
+```{r Q20_total, echo=FALSE}
+  
+Q20 <- summary_stats(Q20) %>%
+  arrange(fct_relevel(Q20, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"))
+
+t_Q20 <- transpose_df(Q20)
+
+table(t_Q20)
+
+```
+### Campus Services
+
+#### Over the past semester, how satisfied are you with the following campus services? Overall MS Nursing Students
+
+```{r campus summary statistics function, echo=FALSE}
+
+# create function
+
+campus_summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>%
+  arrange(fct_relevel({{myxvar}}, "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied", "Did not use",)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+
+# create group function
+
+campus_group_summary_stats <- function (myxvar, myvaluevar) {
+select(raw_data, {{myxvar}}, `1st_Acad_Plan_Descr`) %>%
+    drop_na %>%
+  filter(str_detect(`1st_Acad_Plan_Descr`, {{myvaluevar}})) %>% 
+  group_by(`1st_Acad_Plan_Descr`, {{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>% 
+  mutate(`% of Total` = as.numeric(`% of Total`)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total'))) %>% 
+  arrange(fct_relevel({{myxvar}}, "Very Dissatisfied", "Dissatisfied", "Did not use", "Satisfied", "Very Satisfied"))
+}
+
+```
+
+##### SPS Help Desk
+
+```{r Q17_HELPDESK, echo=FALSE}
+
+help_desk <- campus_summary_stats(Q17_HELPDESK)
+
+t_help_desk <- transpose_df(help_desk)
+
+table(t_help_desk)
+
+```
+
+##### Career Services
+
+```{r Q17_CAREER_SERVICE, echo=FALSE}
+
+career_service <- campus_summary_stats(Q17_CAREER_SERVICE)
+
+t_career_service <- transpose_df(career_service)
+
+table(t_career_service)
+
+```
+
+##### Financial Aid
+
+```{r Q17_FINANCIAL_AID, echo=FALSE}
+
+financial_aid <- campus_summary_stats(Q17_FINANCIAL_AID)
+
+t_financial_aid <- transpose_df(financial_aid)
+
+table(t_financial_aid)
+
+```
+
+##### Academic Advisement
+
+```{r Q17_ADVISEMENT, echo=FALSE}
+
+advisement <- campus_summary_stats(Q17_ADVISEMENT)
+
+t_advisement <- transpose_df(advisement)
+
+table(t_advisement)
+
+```
+
+##### CUNY SPS e-tutoring services
+
+```{r Q17_E_TUTORING, echo=FALSE}
+
+e_tutoring <- campus_summary_stats(`Q17_E_TUTORING`)
+
+t_e_tutoring <- transpose_df(e_tutoring)
+
+table(t_e_tutoring)
+
+```
+
+##### CUNY SPS Writing Fellows
+
+```{r Q17_WRITING_FELLOW, echo=FALSE}
+
+writing_fellows <- campus_summary_stats(Q17_WRITING_FELLOW)
+
+t_writing_fellows <- transpose_df(writing_fellows)
+
+table(t_writing_fellows)
+
+```
+               
+##### Library Access at Baruch College
+
+```{r Q17_LIBRARY_ACCESS, echo=FALSE}
+
+library_access <- campus_summary_stats(Q17_LIBRARY_ACCESS)
+
+t_library_access <- transpose_df(library_access)
+
+table(t_library_access)
+
+```
+
+##### Availability of nursing resources at the Baruch College Library
+
+```{r Q17_LIBRARY_RESOURCES, echo=FALSE}
+
+library_resources <- campus_summary_stats(Q17_LIBRARY_RESOURCES)
+
+t_library_resources <- transpose_df(library_resources)
+
+table(t_library_resources)
+
+```
+
+### Employment & Education
+
+#### Are you currently employed as an RN? 
+
+```{r Q70_RN, echo=FALSE}
+
+Q70_RN <- summary_stats(Q70)
+
+t_Q70_RN <- transpose_df(Q70_RN)
+
+table(t_Q70_RN)
+
+```
+
+#### Are you working full-time or part-time?
+
+```{r Q71_employment_status, echo=FALSE}
+
+Q71_employment_status <- summary_stats(Q71)
+
+t_Q71_employment_status <- transpose_df(Q71_employment_status)
+
+table(t_Q71_employment_status)
+
+```
+#### Number of years employed in your current position 
+
+```{r Q73_years_employed, echo=FALSE}
+
+Q73_years_employed <- summary_stats(Q73) %>% 
+  arrange(fct_relevel(Q73, "Under 1 year", "1-3 years", "4-6 years", "7-9 years", "10-15 years", "Over 15 years"))
+
+t_Q73_years_employed <- transpose_df(Q73_years_employed)
+
+table(t_Q73_years_employed)
+
+```
+#### What type of facility do you work in? 
+
+```{r Q74_facility, echo=FALSE}
+
+Q74_facility <- summary_stats(Q74)
+
+t_Q74_facility <- transpose_df(Q74_facility)
+
+table(t_Q74_facility)
+
+```
+####  What is the highest degree you have completed?
+
+```{r Q53_degree_completed, echo=FALSE}
+
+Q53_degree_completed <- summary_stats(Q53)
+
+t_Q53_degree_completed <- transpose_df(Q53_degree_completed)
+
+table(t_Q53_degree_completed)
+
+```
+#### Degree awarding college: 
+
+```{r Q55_college, echo=FALSE}
+
+Q55_college <- summary_stats(Q55)
+
+t_Q55_college <- transpose_df(Q55_college)
+
+table(t_Q55_college)
+
+```
+#### Discipline: 
+
+```{r Q59_discipline, echo=FALSE}
+
+Q59_discipline <- summary_stats(Q59)
+
+t_Q59_discipline <- transpose_df(Q59_discipline)
+
+table(t_Q59_discipline)
+
+```
+
+### Demographics
+
+#### Age range:
+
+```{r Q40_age, echo=FALSE}
+  
+Q40_age <- summary_stats(Q40)
+
+t_Q40_age <- transpose_df(Q40_age)
+
+table(t_Q40_age)
+
+```
+
+#### Gender Identification:
+
+```{r Q29_gender, echo=FALSE}
+
+Q29_gender <- summary_stats(Q29)
+
+t_Q29_gender <- transpose_df(Q29_gender)
+  
+table(t_Q29_gender)
+
+```
+
+####  Racial/Ethnic Origin:
+
+```{r Q30_race, echo=FALSE}
+  
+Q30_race<- summary_stats(Q30) %>% 
+  arrange(fct_relevel(Q30, "Asian", "Black/African American","Hispanic", "Native Hawaiian/Pacific Islander", "White", "Multiracial", "Other", "Choose not to answer"))
+
+t_Q30_race <- transpose_df(Q30_race)
+  
+table(t_Q30_race)
+
+```
+
+#### Marital Status: 
+
+```{r Q31_marital_status, echo=FALSE}
+  
+Q31_marital_status <- summary_stats(Q31) %>%
+  arrange(fct_relevel(Q31, "Single, never married", "Married or domestic partnership", "Separated", "Divorced", "Choose not to answer"))
+
+t_Q31_marital_status <- transpose_df(Q31_marital_status)
+  
+table(t_Q31_marital_status)
+
+```
+
+####  How many children live with you? 
+
+```{r Q32_children, echo=FALSE}
+  
+Q32_children <- summary_stats(Q32)
+
+t_Q32_children <- transpose_df(Q32_children)
+  
+table(t_Q32_children)
+
+```
+
+### Open-Ended
+
+#### Comments about the Nursing Program Blackboard Organization:
+
+```{r Q11_comments_blackboard, echo=FALSE}
+
+comments_blackboard <- raw_data %>% 
+  select(Q11) %>% 
+  drop_na()
+
+table(comments_blackboard) %>% 
+  kable_styling("striped")
+
+```
+
+#### Comments about the Nursing faculty and staff:
+
+```{r Q13_comments_faculty, echo=FALSE}
+
+comments_faculty <- raw_data %>% 
+  select(Q13) %>% 
+  drop_na()
+
+table(comments_faculty) %>% 
+  kable_styling("striped")
+
+```
+
+#### Given your experience in the Nursing program so far, what feedback do you have for the Nursing director and staff?
+
+```{r Q15_comments_feedback, echo=FALSE}
+
+comments_feedback <- raw_data %>% 
+  select(Q15) %>% 
+  drop_na()
+
+table(comments_feedback) %>% 
+  kable_styling("striped")
+
+```
+
+#### Comments about the support services:
+
+```{r Q18_comments_support, echo=FALSE}
+
+comments_support <- raw_data %>% 
+  select(Q18) %>% 
+  drop_na()
+
+table(comments_support) %>% 
+  kable_styling("striped")
+
+```
+
+#### Please explain why you did not use the following service(s):  (e.g., Did not know about it, did not have time, did not need the service, etc.) 
+
+```{r Q19_comments_services, echo=FALSE}
+
+comments_services <- raw_data %>% 
+  select(Q19) %>% 
+  drop_na()
+
+table(comments_services) %>% 
+  kable_styling("striped")
+
+```
+
+#### Comments about the support and resources offered by the college:
+
+```{r Q21_comments_resources, echo=FALSE}
+
+comments_resources <- raw_data %>% 
+  select(Q21) %>% 
+  drop_na()
+
+table(comments_resources)  %>% 
+  kable_styling("striped")
+
+```
+
+#### Employment Details: Current Title:
+
+```{r Q72_3_comments_title, echo=FALSE}
+
+comments_title <- raw_data %>% 
+  select(Q72_3) %>% 
+  drop_na()
+
+table(comments_title) %>% 
+  kable_styling("striped")
+
+```
+
+#### What type of facility do you work in? Other:
+
+```{r Q74_6_TEXT_comments_facility, echo=FALSE}
+
+comments_facility <- raw_data %>% 
+  select(Q74_6_TEXT) %>% 
+  drop_na()
+
+table(comments_facility) %>% 
+  kable_styling("striped")
+
+```
+
+#### College: Other:
+
+```{r Q57_comments_college, echo=FALSE}
+
+comments_college <- raw_data %>% 
+  select(Q57) %>% 
+  drop_na()
+
+table(comments_college) %>% 
+  kable_styling("striped")
+
+```
+
+#### Discipline: Other:
+
+```{r Q61_comments_discipline, echo=FALSE}
+
+comments_discipline <- raw_data %>% 
+  select(Q61) %>% 
+  drop_na()
+
+table(comments_discipline) %>% 
+  kable_styling("striped")
+
+```
+
+#### Racial/Ethnic Origin: Other:
+
+```{r Q30_7_TEXT_comments_race, echo=FALSE}
+
+comments_race <- raw_data %>% 
+  select(Q30_7_TEXT) %>% 
+  drop_na()
+
+table(comments_race) %>% 
+  kable_styling("striped")
+
+```

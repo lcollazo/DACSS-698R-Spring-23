@@ -1,0 +1,47 @@
+---
+title: "Total count of survey recipients by course"
+author: "Laura Collazo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(qualtRics)
+library(tidyverse)
+
+```
+This is the total count of recipients by course from the contact list.
+
+```{r}
+
+# read-in data
+
+sce_data <- read_csv("sp_2023_sce_contact_list_2023-4-14.csv")
+
+# tidy data
+
+sce <- sce_data %>% 
+  select(StudentEMPLID, `Course 1`, `Course 2`, `Course 3`, `Course 4`, `Course 5`, `Course 6`)
+
+# pivot the dataframe
+
+sce_pivot_long <- sce %>% 
+  pivot_longer(cols = starts_with("Course"), names_to = "CourseNumber", values_to = "Course")
+
+# count each course
+
+sce_course_counts <- sce_pivot_long %>% 
+  count(Course)
+
+# View the result
+
+sce_course_counts
+
+# write out results
+
+write_csv(sce_course_counts, "sce_total_count_by_course_2023-5-3.csv")
+  
+```
+

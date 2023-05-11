@@ -1,0 +1,1042 @@
+---
+title: "2023 NURS BS Student Survey Report"
+author: "Prepared by Laura Collazo"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(qualtRics)
+library(tidyverse)
+library(kableExtra)
+
+# to avoid messages and warnings
+
+options(dplyr.summarise.inform = FALSE, warn = -1)
+
+```
+
+```{r read in data, message=FALSE, echo=FALSE}
+
+raw_data <- read_survey("BS+in+Nursing+Student+Survey-+2023_April+5,+2023_03.00.csv")
+
+raw_data <- raw_data %>% 
+  mutate(Q4 = as.character(Q4)) %>% 
+  mutate(Q32 = case_when(Q32 < 26 ~ "25 and under",
+                   Q32 > 25 & Q32 < 31 ~ "26 thru 30",
+                   Q32 > 30 & Q32 < 36 ~ "31 thru 35",
+                   Q32 > 35 & Q32 < 41 ~ "36 thru 40",
+                   Q32 > 40 & Q32 < 46 ~ "41 thru 45",
+                   Q32 > 45 & Q32 < 51 ~ "46 thru 50",
+                   Q32 > 50 & Q32 < 56 ~ "51 thru 55",
+                   Q32 > 55 ~ "56 and over"
+                    )) %>% 
+  mutate(Q21 = recode(Q21, 
+      `Other (specify):` = "Other")) %>% 
+  mutate(Q21 = recode(Q21, 
+      `Outpatient Speciality Clinics ( Example: ENT, GI )` = "Outpatient Speciality Clinics")) %>% 
+  mutate(Q26 = recode(Q26, 
+      `Other (specify in text box)` = "Other")) %>% 
+  mutate(Q28 = recode(Q28,
+      `(0) dependent` = "0",
+      `(1) dependent` = "1",
+      `(2) dependents` = "2",
+      `(3 or more) dependents` = "3 or more")) %>% 
+  
+# this filter removes responses from testing and responses from open surveys that were force closed
+  
+  filter(Finished != "FALSE" & DistributionChannel != "preview") 
+
+```
+
+This report provides summary statistics and visualizations of student responses to the 2023 NURS BS student survey. The survey was administered through Qualtrics between March 7 - April 4, 2023.
+
+*Note: in some instances the total percent will be slightly above or below 100 as a result of rounding.*
+
+## Response rate
+
+```{r response rate, echo=FALSE}
+
+#The total number of survey recipients needs to manually be set.
+
+total <- 347
+
+n <- nrow(raw_data)
+
+no_response <- total-n
+
+surveys_finished <- (n/total) * 100
+
+unfinished_surveys <- (no_response/total) * 100
+
+percent_total <- surveys_finished + unfinished_surveys
+
+response_type <- c("Surveys Finished", "Unfinished Surveys", "Total")
+count <- c(n, no_response, total)
+percent <- c(surveys_finished, unfinished_surveys, percent_total)
+
+response_rate <- data.frame(response_type, count, percent)
+
+kable(response_rate, digits = 2) %>% 
+  kable_styling()
+
+```
+
+## Margin of error for response rate with a 95% confidence level
+
+#### The margin of error is plus or minus:
+
+```{r margin of error, echo=FALSE}
+
+#confidence level
+
+confidence_level <- 0.95
+
+# margin of error for finite populations
+
+z <- 1.96
+p <- n / total 
+s<- sqrt(p*(1-p))     
+N <- total
+nadj <- ((N-1)*n)/(N-n) 
+margin_of_error <- (z*s/sqrt(nadj))*100
+
+kable(margin_of_error, col.names = c("margin_of_error"), digits = 2) %>% 
+  kable_styling("striped")
+
+```
+
+*Note: The margin of error was calculated with a correction factor for finite populations.*
+
+## Summary statistics
+
+```{r functions, echo=FALSE}
+
+# create function for summary statistics
+
+summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total'))) 
+}
+
+# create function to transpose data
+
+transpose_df <- function(mydata) {{{mydata}} %>%     
+    t() %>%      
+    as.data.frame() %>%   
+    tibble::rownames_to_column(var = "rowname") %>%
+    janitor::row_to_names(row_number = 1)
+  }
+
+# create function for table
+
+table <- function(mydata) {kable({{mydata}}, digits = 2, row.names = F) %>% 
+  kable_styling()
+}
+
+# create bar plot function
+
+bar_plot <- function(myxvar, mytitle){
+  suppressWarnings(raw_data %>% 
+  select({{myxvar}}) %>% 
+    drop_na %>%
+  group_by({{myxvar}}) %>% 
+  summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>% 
+  ggplot(aes({{myxvar}}, percent, 
+             label=scales::percent(percent))) +
+  geom_col(fill="lightgray") +
+  coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent of total",
+       x = NULL) +
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5)))
+}
+
+```
+
+### First NURS Course
+
+#### Term of First Nursing Course
+
+```{r Q3, echo=FALSE}
+  
+semester_first <- summary_stats(Q3) %>%
+  arrange(fct_relevel(Q3, "Fall", "Winter", "Spring", "Summer"))
+
+t_semester_first <- transpose_df(semester_first)
+
+table(t_semester_first) 
+
+raw_data %>% 
+  select(Q3) %>% 
+    drop_na() %>% 
+  group_by(Q3) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q3, "Fall", "Winter", "Spring", "Summer"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Term of first NURS course",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### Year of First Nursing Course
+
+```{r Q4, echo=FALSE}
+
+year_first <- summary_stats(Q4)
+
+t_year_first <- transpose_df(year_first) 
+
+table(t_year_first)
+
+bar_plot(Q4, "Year of first NURS course")
+
+```
+
+### Employment & Education
+
+#### Are you currently employed as an RN?
+
+```{r Q19, echo=FALSE}
+
+employed_rn <- summary_stats(Q19)
+
+t_employed_rn <- transpose_df(employed_rn)
+
+table (t_employed_rn)
+
+bar_plot(Q19, "Are you currently employed as an RN?")
+
+```
+
+#### Are you working full-time or part-time?
+
+```{r Q20, echo=FALSE}
+
+employed_status <- summary_stats(Q20)
+
+t_employed_status <- transpose_df(employed_status)
+
+table(t_employed_status)
+
+bar_plot(Q20, "Are you working full-time or part-time?")
+
+
+```
+
+#### Number of years employed in your current position
+
+```{r Q33, echo=FALSE}
+
+employed_years <- summary_stats(Q33) %>%
+  arrange(fct_relevel(Q33, "under 1 year", "1-3 years", "4-6 years", "7-9 years", "10-15 years", "Over 15 years"))
+
+t_employed_years <- transpose_df(employed_years)
+
+table(t_employed_years)
+
+raw_data %>% 
+  select(Q33) %>% 
+    drop_na() %>% 
+  group_by(Q33) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q33, "under 1 year", "1-3 years", "4-6 years", "7-9 years", "10-15 years", "Over 15 years"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Number of years employed in current position",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### What type of facility do you work in?
+
+```{r Q21, echo=FALSE}
+
+employed_facility <- summary_stats(Q21)
+
+t_employed_facility <- transpose_df(employed_facility)
+
+table(t_employed_facility)
+
+bar_plot(Q21, "What type of facility do you work in?")
+
+```
+
+#### What is the highest degree you have completed?
+
+```{r Q22, echo=FALSE}
+
+degree_type <- summary_stats(Q22)
+
+t_degree_type <- transpose_df(degree_type)
+
+table(t_degree_type)
+
+bar_plot(Q22, "What is the highest degree you have completed?")
+
+```
+
+#### Please tell us about the college you earned your degree from:
+
+```{r Q23, echo=FALSE}
+
+degree_location <- summary_stats(Q23)
+
+t_degree_location <- transpose_df(degree_location)
+
+table(t_degree_location)
+
+bar_plot(Q23, "What college did you earn your degree from?")
+
+```
+
+#### Please tell us about the discipline you earned your degree in:
+
+```{r Q30, echo=FALSE}
+
+degree_discipline <- summary_stats(Q30)
+
+t_degree_discipline <- transpose_df(degree_discipline)
+
+table(t_degree_discipline)
+
+bar_plot(Q30, "What discipline did you earn your degree in?")
+
+```
+
+### PLO
+
+#### Please indicate how well you feel the Nursing program is preparing you with the abilities to:
+
+```{r PLO summary statistics function, echo=FALSE}
+
+# create function
+
+plo_summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>%
+  arrange(fct_relevel({{myxvar}}, "Not at All", "Very Little", "Uncertain", "Well", "Very Well")) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total'))) 
+}
+
+# create plot function
+
+plo_bar_plot <- function(myxvar, mytitle) {
+  raw_data %>% 
+  select({{myxvar}}) %>% 
+      drop_na() %>% 
+  group_by({{myxvar}}) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel({{myxvar}}, "Not at All", "Very Little", "Uncertain", "Well", "Very Well"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+  
+}
+
+```
+
+##### Provide care that is cognizant of and respectful of the patients's cultural beliefs.
+
+```{r plo_1, echo=FALSE}
+
+plo_1 <- plo_summary_stats(PLO_1)
+
+t_plo_1 <- transpose_df(plo_1)
+
+table(t_plo_1)
+
+plo_bar_plot(PLO_1, "How well do you feel the Nursing program is preparing you with the abilities to\n provide care that is cognizant of and respectful of the patients's cultural beliefs?")
+
+```
+
+##### Practice the profession of nursing based on a set of core values which incorporate a humanitarian, altruistic and social justice perspective.
+
+```{r plo_2, echo=FALSE}
+
+plo_2 <- plo_summary_stats(PLO_2)
+
+t_plo_2 <- transpose_df(plo_2)
+
+table(t_plo_2)
+
+plo_bar_plot(PLO_2, "How well do you feel the Nursing program is preparing you with the abilities to\n practice the profession of nursing based on a set of core values which\n incorporate a humanitarian, altruistic and social justice perspective?")
+
+```
+
+##### Communicate effectively with patients, families, communities and other healthcare providers to promote health.
+
+```{r plo_3, echo=FALSE}
+
+plo_3 <- plo_summary_stats(PLO_3)
+
+t_plo_3 <- transpose_df(plo_3)
+
+table(t_plo_3)
+
+plo_bar_plot(PLO_3, "How well do you feel the Nursing program is preparing you with the abilities to\n communicate effectively with patients, families, communities and other\n healthcare providers to promote health?")
+
+```
+
+##### Integrate reliable evidence to provide the highest quality patient care.
+
+```{r plo_4, echo=FALSE}
+
+plo_4 <- plo_summary_stats(PLO_4)
+
+t_plo_4 <- transpose_df(plo_4)
+
+table(t_plo_4)
+
+plo_bar_plot(PLO_4, "How well do you feel the Nursing program is preparing you with the abilities to\n integrate reliable evidence to provide the highest quality patient care?")
+
+```
+
+##### Advocate for relevant local and global healthcare policy.
+
+```{r plo_5, echo=FALSE}
+
+plo_5 <- plo_summary_stats(PLO_5)
+
+t_plo_5 <- transpose_df(plo_5)
+
+table(t_plo_5)
+
+plo_bar_plot(PLO_5, "How well do you feel the Nursing program is preparing you with the abilities to\n advocate for relevant local and global healthcare policy?")
+
+```
+
+##### Apply leadership and management concepts to ensure best possible health care outcomes.
+
+```{r plo_6, echo=FALSE}
+
+plo_6 <- plo_summary_stats(PLO_6)
+
+t_plo_6 <- transpose_df(plo_6)
+
+table(t_plo_6)
+
+plo_bar_plot(PLO_6, "How well do you feel the Nursing program is preparing you with the abilities to\n apply leadership and management concepts to ensure best possible health care\n outcomes?")
+
+```
+
+##### Use critical thinking skills to make sound clinical judgment.
+
+```{r plo_7, echo=FALSE}
+
+plo_7 <- plo_summary_stats(PLO_7)
+
+t_plo_7 <- transpose_df(plo_7)
+
+table(t_plo_7)
+
+plo_bar_plot(PLO_7, "How well do you feel the Nursing program is preparing you with the abilities to\n use critical thinking skills to make sound clinical judgment?")
+
+```
+
+##### Utilize and manage all available health information technology to provide safe and effective patient care.
+
+```{r plo_8, echo=FALSE}
+
+plo_8 <- plo_summary_stats(PLO_8)
+
+t_plo_8 <- transpose_df(plo_8)
+
+table(t_plo_8)
+
+plo_bar_plot(PLO_8, "How well do you feel the Nursing program is preparing you with the abilities to\n utilize and manage all available health information technology to provide safe\n and effective patient care?")
+
+```
+
+##### Participate in patient safety and quality initiatives within the context of an inter-professional team.
+
+```{r Q5_9, echo=FALSE}
+
+plo_9 <- plo_summary_stats(Q5_9)
+
+t_plo_9 <- transpose_df(plo_9)
+
+table(t_plo_9)
+
+plo_bar_plot(Q5_9, "How well do you feel the Nursing program is preparing you with the abilities to\n participate in patient safety and quality initiatives within the context of an\n inter-professional team?")
+
+```
+
+### Program Satisfaction
+
+#### Does the Nursing Program Blackboard site provide helpful information relevant to your progress as a student?
+
+```{r Q6, echo=FALSE}
+
+blackboard <- summary_stats(Q6)
+
+t_blackboard <- transpose_df(blackboard)
+
+table(t_blackboard)
+
+bar_plot(Q6, "Does the Nursing Program Blackboard site provide helpful information relevant to\n your progress as a student?")
+
+```
+
+#### Overall, I feel that the Nursing faculty and staff provide sufficient support to help me complete my degree.
+
+```{r Q8, echo=FALSE}
+
+support <- summary_stats(Q8) %>% 
+  arrange(fct_relevel(Q8, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"))
+
+t_support <- transpose_df(support)
+
+table(t_support)
+
+raw_data %>% 
+  select(Q8) %>% 
+    drop_na() %>% 
+  group_by(Q8) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q8, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Overall, I feel that the Nursing faculty and staff provide sufficient support\n to help me complete my degree.",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### Overall, how satisfied are you with the CUNY SPS RN to BS in Nursing program?
+
+```{r Q10, echo=FALSE}
+
+satisfaction <- summary_stats(Q10) %>% 
+  arrange(fct_relevel(Q10, "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied"))
+
+t_satisfaction <- transpose_df(satisfaction)
+
+table(t_satisfaction)
+
+raw_data %>% 
+  select(Q10) %>% 
+    drop_na() %>% 
+  group_by(Q10) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q10, "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Overall, how satisfied are you with the CUNY SPS RN to BS in\n Nursing program?",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### Overall, I feel that the college provides sufficient support and resources for me to complete my degree.
+
+```{r Q16, echo=FALSE}
+
+resources <- summary_stats(Q16) %>% 
+  arrange(fct_relevel(Q16, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"))
+
+t_resources <- transpose_df(resources)
+
+table(t_resources)
+
+raw_data %>% 
+  select(Q16) %>% 
+    drop_na() %>% 
+  group_by(Q16) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q16, "Strongly Disagree", "Disagree", "Agree", "Strongly Agree"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Overall, I feel that the college provides sufficient support and resources for\n me to complete my degree.",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+### NURS 301
+
+#### The following question only applies to students who have taken the course NURS 301. How effective/ineffective was Shadow Health at facilitating your learning?
+
+```{r Q34, echo=FALSE}
+
+nurs_301 <- summary_stats(Q34) %>% 
+  arrange(fct_relevel(Q34, "Not effective at all", "Slightly effective", "Moderately effective", "Very effective", "Extremely effective"))
+
+t_nurs_301 <- transpose_df(nurs_301)
+
+table(t_nurs_301)
+
+raw_data %>% 
+  select(Q34) %>% 
+    drop_na() %>% 
+  group_by(Q34) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q34, "Not effective at all", "Slightly effective", "Moderately effective", "Very effective", "Extremely effective"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "How effective/ineffective was Shadow Health at facilitating your learning?",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+### Campus Services
+
+#### Over the past semester, how satisfied are you with the following campus services?
+
+```{r campus summary statistics function, echo=FALSE}
+
+# create function
+
+campus_summary_stats <- function (myxvar) {
+  select(raw_data, {{myxvar}}) %>%
+    drop_na %>%
+  group_by({{myxvar}}) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>%
+  arrange(fct_relevel({{myxvar}}, "Did not use", "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied")) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+}
+
+# create plot function
+
+campus_bar_plot <- function(myxvar, mytitle) {
+  raw_data %>% 
+  select({{myxvar}}) %>% 
+      drop_na() %>% 
+  group_by({{myxvar}}) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel({{myxvar}}, "Did not use", "Very Dissatisfied", "Dissatisfied", "Satisfied", "Very Satisfied"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = mytitle,
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+  
+}
+
+```
+
+##### SPS Help Desk
+
+```{r Q13_HelpDesk, echo=FALSE}
+
+help_desk <- campus_summary_stats(Q13_HelpDesk)
+
+t_help_desk <- transpose_df(help_desk)
+
+table(t_help_desk)
+
+campus_bar_plot(Q13_HelpDesk, "Over the past semester, how satisfied are you with the following\n campus service: SPS Help Desk")
+
+```
+
+##### Career Services
+
+```{r Q13_Career_Service, echo=FALSE}
+
+career_service <- campus_summary_stats(Q13_Career_Service)
+
+t_career_service <- transpose_df(career_service)
+
+table(t_career_service)
+
+campus_bar_plot(Q13_Career_Service, "Over the past semester, how satisfied are you with the following\n campus service: Career Services")
+
+```
+
+##### Financial Aid
+
+```{r Q13_FinancialAid, echo=FALSE}
+
+financial_aid <- campus_summary_stats(Q13_FinancialAid)
+
+t_financial_aid <- transpose_df(financial_aid)
+
+table(t_financial_aid)
+
+campus_bar_plot(Q13_FinancialAid, "Over the past semester, how satisfied are you with the following\n campus service: Financial Aid")
+
+```
+
+##### Academic Advisement
+
+```{r Q13_Advisement, echo=FALSE}
+
+advisement <- campus_summary_stats(Q13_Advisement)
+
+t_advisement <- transpose_df(advisement)
+
+table(t_advisement)
+
+campus_bar_plot(Q13_Advisement, "Over the past semester, how satisfied are you with the following\n campus service: Academic Advisement")
+
+```
+
+##### CUNY SPS e-tutoring services
+
+```{r Q13_e-tutoring, echo=FALSE}
+
+e_tutoring <- campus_summary_stats(`Q13_e-tutoring`)
+
+t_e_tutoring <- transpose_df(e_tutoring)
+
+table(t_e_tutoring)
+
+campus_bar_plot(`Q13_e-tutoring`, "Over the past semester, how satisfied are you with the following\n campus service: CUNY SPS e-tutoring services")
+
+```
+
+##### CUNY SPS Writing Fellows
+
+```{r Q13_WritingFellows, echo=FALSE}
+
+writing_fellows <- campus_summary_stats(Q13_WritingFellows)
+
+t_writing_fellows <- transpose_df(writing_fellows)
+
+table(t_writing_fellows)
+
+campus_bar_plot(Q13_WritingFellows, "Over the past semester, how satisfied are you with the following\n campus service: CUNY SPS Writing Fellows")
+
+```
+
+##### Library Access at Baruch College
+
+```{r Q13_LibraryAccess, echo=FALSE}
+
+library_access <- campus_summary_stats(Q13_LibraryAccess)
+
+t_library_access <- transpose_df(library_access)
+
+table(t_library_access)
+
+campus_bar_plot(Q13_LibraryAccess, "Over the past semester, how satisfied are you with the following\n campus service: Library Access at Baruch College")
+
+```
+
+##### Availability of nursing resources at the Baruch College Library
+
+```{r Q13_LibraryResources, echo=FALSE}
+
+library_resources <- campus_summary_stats(Q13_LibraryResources)
+
+t_library_resources <- transpose_df(library_resources)
+
+table(t_library_resources)
+
+campus_bar_plot(Q13_LibraryResources, "Over the past semester, how satisfied are you with the following\n campus service: Availability of nursing resources at the Baruch College Library")
+
+```
+
+### Demographics
+
+#### Age range:
+
+```{r Q32, echo=FALSE}
+
+# Age range (report from last year is incorrect!)
+
+age <- raw_data %>% 
+  select(Q32) %>% 
+  drop_na %>%
+  group_by(Q32) %>%
+summarise(Count = n()) %>%
+  mutate(`% of Total` = round(Count/sum(Count)*100, 2)) %>% 
+   bind_rows(summarise(., across(where(is.numeric), sum),
+                          across(where(is.character), ~'Total')))
+
+t_age <- transpose_df(age)
+
+table(t_age)
+
+bar_plot(Q32, "Age range of Nursing BS survey respondents")
+
+```
+
+#### Gender identification:
+
+```{r Q25, echo=FALSE}
+
+gender <- summary_stats(Q25) %>% 
+  arrange(fct_relevel(Q25, "Female", "Male", "Choose not to answer"))
+
+t_gender <- transpose_df(gender)
+
+table(t_gender)
+
+raw_data %>% 
+  select(Q25) %>% 
+    drop_na() %>% 
+  group_by(Q25) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q25, "Female", "Male", "Choose not to answer"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Gender identification of Nursing BS survey respondents",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### Racial/Ethnic Origin:
+
+```{r Q26, echo=FALSE}
+
+race <- summary_stats(Q26) %>% 
+  arrange(fct_relevel(Q26, "Asian", "Black/African American","Hispanic", "Native Hawaiian/Pacific Islander", "White", "Multiracial", "Other", "Choose not to answer"))
+
+t_race <- transpose_df(race)
+
+table(t_race)
+
+raw_data %>% 
+  select(Q26) %>% 
+    drop_na() %>% 
+  group_by(Q26) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q26, "Asian", "Black/African American","Hispanic", "Native Hawaiian/Pacific Islander", "White", "Multiracial", "Other", "Choose not to answer"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Racial/Ethnic origin of Nursing BS survey respondents",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### Marital Status:
+
+```{r Q27, echo=FALSE}
+
+marital_status <- summary_stats(Q27) %>% 
+  arrange(fct_relevel(Q27, "Single, never married", "Married or domestic partnership", "Separated", "Divorced", "Choose not to answer"))
+
+t_marital_status <- transpose_df(marital_status)
+
+table(t_marital_status)
+
+raw_data %>% 
+  select(Q27) %>%
+    drop_na() %>% 
+  group_by(Q27) %>%
+summarise(count = n()) %>%
+  mutate(percent = count/sum(count)) %>%
+  ggplot(aes(x = fct_relevel(Q27, "Single, never married", "Married or domestic partnership", "Separated", "Divorced", "Choose not to answer"), y = percent)) + 
+  geom_col(fill="lightgray") +
+coord_flip() +
+  theme_light() +
+  labs(title = "Marital Status of Nursing BS survey respondents",
+       y = "Percent of total",
+       x = NULL) + 
+ scale_y_continuous(labels = scales::percent) +
+  geom_text(aes(label = scales::percent(percent), hjust = .5))
+
+```
+
+#### How many dependents live with you?
+
+```{r Q28, echo=FALSE}
+
+dependents <- summary_stats(Q28)
+
+t_dependents <- transpose_df(dependents)
+
+table(t_dependents)
+
+bar_plot(Q28, "Number of dependents living with Nursin BS survey respondents")
+
+```
+
+### Open-Ended
+
+```{r Q7, echo=FALSE}
+
+comments_blackboard <- raw_data %>% 
+  select(Q7) %>% 
+  drop_na() %>% 
+  rename("Comments about the Nursing Program Blackboard Organization:" = Q7)
+
+table(comments_blackboard) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q9, echo=FALSE}
+
+comments_faculty <- raw_data %>% 
+  select(Q9) %>% 
+  drop_na() %>% 
+  rename("Comments about the Nursing faculty and staff:" = Q9)
+
+table(comments_faculty) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q11, echo=FALSE}
+
+comments_feedback <- raw_data %>% 
+  select(Q11) %>% 
+  drop_na() %>% 
+  rename("Given your experience in the Nursing program so far, what feedback do you have for the Nursing director and staff?" = Q11)
+
+table(comments_feedback) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q14, echo=FALSE}
+
+comments_support <- raw_data %>% 
+  select(Q14) %>% 
+  drop_na()  %>% 
+  rename("Comments about support services:" = Q14)
+
+table(comments_support) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q15, echo=FALSE}
+
+comments_services <- raw_data %>% 
+  select(Q15) %>% 
+  drop_na() %>% 
+  rename("Please explain why you did not use the following service(s): (e.g., Did not know about it, did not have time, did not need the service, etc." = Q15)
+
+table(comments_services) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q17, echo=FALSE}
+
+comments_resources <- raw_data %>% 
+  select(Q17) %>% 
+  drop_na() %>% 
+  rename("Comments about the support and resources offered by the college:" = Q17)
+
+table(comments_resources) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q29_3, echo=FALSE}
+
+comments_title <- raw_data %>% 
+  select(Q29_3) %>% 
+  drop_na() %>% 
+  rename("Employment Details: Current Title:" = Q29_3)
+
+table(comments_title) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q21_6_TEXT, echo=FALSE}
+
+comments_facility <- raw_data %>% 
+  select(Q21_6_TEXT) %>% 
+  drop_na() %>% 
+  rename("What type of facility do you work in? Other:" = Q21_6_TEXT)
+
+table(comments_facility) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q31, echo=FALSE}
+
+comments_college <- raw_data %>% 
+  select(Q31) %>% 
+  drop_na() %>% 
+  rename("College: Other:" = Q31)
+
+table(comments_college) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q35, echo=FALSE}
+
+comments_discipline <- raw_data %>% 
+  select(Q35) %>% 
+  drop_na() %>% 
+  rename("Discipline: Other:" = Q35)
+
+table(comments_discipline) %>% 
+  kable_styling("striped")
+
+```
+
+```{r Q26_7_TEXT, echo=FALSE}
+
+comments_race <- raw_data %>% 
+  select(Q26_7_TEXT) %>% 
+  drop_na() %>% 
+  rename("Racial/Ethnic Origin: Other:" = Q26_7_TEXT)
+
+table(comments_race) %>% 
+  kable_styling("striped")
+
+```
