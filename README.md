@@ -7,7 +7,7 @@ It contains scripts for the following projects:
 * Nursing Master's Program (NURS MS) survey
 * Student Course Evaluations (SCE) survey
 
-It was not approved to share the raw student data, however the HTML output of the survey reports will be provided for review.
+It was not approved to share the raw student data, however PDFs of the survey reports will be provided for review.
 
 Additional notes:
 * The NURS MS script was handed off as a draft to be finalized by another team member as hours were maxed out on my Spring appointment before finalizing.
